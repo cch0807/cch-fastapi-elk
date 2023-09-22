@@ -1,0 +1,91 @@
+version: '3'
+
+services:
+
+  fastapi:
+    image: fastapi
+    container_name: fastapi-backend
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - 8000:8000
+    volumes:
+      - ./api:/app/api
+    depends_on:
+      - elastic
+    networks:
+      - es_net
+
+  elastic:
+    image: elasticsearch:7.11.1
+    container_name: elastic
+    environment:
+      - TZ=Asia/Seoul
+      - ELASTIC_PASSWORD=elasticpassword
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false
+      - action.destructive_requires_name=false
+    ports:
+      - 9200:9200
+      - 9300:9300
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - es_net
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.11.1
+    logging:
+      driver: none # 로그를 남기지 않음
+    environment:
+      - TZ=Asia/Seoul
+      - ELASTICSEARCH_HOSTS=http://elastic:9200
+    ports:
+      - 5601:5601
+    depends_on:
+      - elastic
+    networks:
+      - es_net
+
+  logstash:
+    restart: unless-stopped
+    build: ./logstash
+    container_name: logstash
+    environment:
+      - TZ=Asia/Seoul
+      - xpack.monitoring.enabled=false
+    depends_on:
+      - elastic
+    ports:
+      - "5044:5044"
+    networks:
+      - es_net
+    
+  
+
+  mkdocs:
+      image: ghcr.io/peaceiris/mkdocs-material
+      container_name: mkdocs_material
+      ports:
+        - 8080:8080
+      volumes:
+        - ${PWD}:/root
+      stdin_open: true
+      tty: true
+      command:
+        - "mkdocs"
+        - "serve"
+        - "--dev-addr=0.0.0.0:8080"
+        - "--config-file"
+        - "./mkdocs-sample.yml"
+
+networks:
+  es_net:
+    name: elastic_network
+    driver: bridge
